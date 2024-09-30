@@ -1,11 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
+const { exec } = require('child_process');
 const path = require('path');
 const bwipjs = require('bwip-js');
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 300,
-    height: 400,
+    width: 800,
+    height: 600,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -31,6 +32,7 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Get connected printers
 ipcMain.handle('get-printers', async (event) => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) {
@@ -46,74 +48,78 @@ ipcMain.handle('get-printers', async (event) => {
   }
 });
 
-async function generateBarcodeImage(barcodeType, barcodeData) {
-
-  try {
-    let widthtmp = 3 * 0.3527;
-    const options = {
-      bcid: barcodeType,
-      text: '111',
-      width: 30,
-      scaleY: 1,
-      scaleX: 1,
-      paddingwidth: 0,
-      paddingheight: 0,
-      height: 20, // Set height to 20 mm
-      includetext: true,
-      textxalign: 'center',
-    };
-
-    const buffer = await bwipjs.toBuffer(options);
-    return buffer;
-  } catch (error) {
-    console.error('Error generating barcode image:', error);
-    throw error;
-  }
-}
-
-async function printBarcode(barcodeType, barcodeData) {
-  let widthTemp = 390;
-  let heightTemp = 355;
+// Generate and print the barcode
+async function printBarcode(printerName, barcodeData) {
   const win = new BrowserWindow({
-    width: widthTemp,
-    height: heightTemp,
+    width: 400,
+    height: 'auto',
     webPreferences: {
       nodeIntegration: true,
     },
   });
 
-  win.loadURL('data:text/html;charset=utf-8,<html><body><img id="barcode"></body></html>');
+  // Generate the barcode using bwip-js
+  const barcodeImage = await bwipjs.toBuffer({
+    bcid: 'code128',       // Barcode type
+    text: barcodeData,     // Barcode data
+    scale: 3,              // Scaling factor
+    height: 10,            // Height of the barcode
+    includetext: true,     // Include the text below the barcode
+    textxalign: 'center',  // Center align the text
+  });
 
-  const barcodeImage = await generateBarcodeImage(barcodeType, barcodeData);
-  const barcodeImageBase64 = barcodeImage.toString('base64');
+  // Load a custom HTML page for printing the barcode
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+    <html>
+    <body style="margin: 0; padding: 0;">
+      <div id="print" style="width: 70mm; height: auto;">
+        <img src="data:image/png;base64,${barcodeImage.toString('base64')}" style="width: 100%; height: auto;">
+      </div>
+    </body>
+    </html>
+  `));
 
-  win.webContents.executeJavaScript(`
-    const barcodeImg = document.getElementById('barcode');
-    barcodeImg.src = 'data:image/png;base64,${barcodeImageBase64}';
-  `);
-
+  // Wait for the window to load, then print the content
   win.webContents.on('did-finish-load', () => {
-    win.webContents.print({
-      silent: false,
-      printBackground: true,
-      color: false,
-      margins: {
-        marginType: 'none',
-      },
-      landscape: false,
-      scaleFactor: 100,
-      pageSize: { width: widthTemp, height: heightTemp }, // Exact size of the label in pixels
-    }, (success, errorType) => {
-      if (!success) {
-        console.error('Failed to print:', errorType);
-        dialog.showErrorBox('Print Error', `Failed to print: ${errorType}`);
-      } else {
-        console.log('Print successful');
-      }
+    win.webContents.executeJavaScript(`
+      window.scrollTo(0, document.body.scrollHeight); // Scroll to render all content
+    `).then(() => {
+      win.webContents.print({
+        silent: true,
+        printBackground: false,
+        deviceName: printerName,
+      }, (success, failureReason) => {
+        if (!success) {
+          console.error('Failed to print:', failureReason);
+        } else {
+          console.log('Print successful');
+        }
+        win.close(); // Close the print window after the job is done
+      });
     });
   });
 }
 
-ipcMain.handle('print-barcode', async (event, barcodeData) => {
-  await printBarcode('code128', barcodeData); // Pass the barcode data to print
+// Print PRN file using `lp` command
+ipcMain.handle('print-prn', (event, printerName, prnFilePath) => {
+  exec(`lp -d ${printerName} -o raw ${prnFilePath}`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error printing PRN file: ${error.message}`);
+      return;
+    }
+    if (stderr) {
+      console.error(`Print stderr: ${stderr}`);
+      return;
+    }
+    console.log(`Print stdout: ${stdout}`);
+  });
+});
+
+// Handle print-barcode event
+ipcMain.handle('print-barcode', async (event, barcodeData, printerName) => {
+  if (!printerName) {
+    console.error('No printer selected');
+    return;
+  }
+  printBarcode(printerName, barcodeData); // Pass selected printer name
 });

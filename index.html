@@ -1,14 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Printer App</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barcode Printer</title>
 </head>
 <body>
-  <h1>Available Printers</h1>
+  <h1>Barcode Printer</h1>
+
+  <h3>Select Printer</h3>
   <ul id="printers"></ul>
-  <input type="text" id="barcodeInput" placeholder="Enter barcode data" />
-  <button id="printBarcodeButton">Print Barcode Label</button>
-  <button id="printTestButton">Print Test</button>
+  <p>Selected Printer: <span id="selectedPrinter"></span></p>
+
+  <h3>Generate Barcode</h3>
+  <input type="text" id="barcodeInput" placeholder="Enter barcode data">
+  <button id="printBarcodeButton">Print Barcode</button>
+
+  <h3>Test Print</h3>
+  <button id="printTestButton">Test Print</button>
+
+  <h3>Print PRN File</h3>
+  <button id="printPrnButton">Print PRN File</button>
+
   <script src="renderer.js"></script>
 </body>
 </html>
